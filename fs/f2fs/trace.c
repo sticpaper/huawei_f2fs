@@ -1,12 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * f2fs IO tracer
  *
  * Copyright (c) 2014 Motorola Mobility
  * Copyright (c) 2014 Jaegeuk Kim <jaegeuk@kernel.org>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
  */
 #include <linux/fs.h>
 #include <linux/f2fs_fs.h>
@@ -14,8 +11,10 @@
 #include <linux/radix-tree.h>
 
 #include "f2fs.h"
+#define CREATE_TRACE_POINTS
 #include "trace.h"
 
+#ifdef CONFIG_F2FS_IO_TRACE
 static RADIX_TREE(pids, GFP_ATOMIC);
 static spinlock_t pids_lock;
 static struct last_io_info last_io;
@@ -57,7 +56,7 @@ void f2fs_trace_pid(struct page *page)
 {
 	struct inode *inode = page->mapping->host;
 	pid_t pid = task_pid_nr(current);
-	void *p;
+	void *p = NULL;
 
 	set_page_private(page, (unsigned long)pid);
 
@@ -166,3 +165,4 @@ void f2fs_destroy_trace_ios(void)
 	}
 	spin_unlock(&pids_lock);
 }
+#endif
