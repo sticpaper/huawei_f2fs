@@ -1,18 +1,15 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * f2fs IO tracer
  *
  * Copyright (c) 2014 Motorola Mobility
  * Copyright (c) 2014 Jaegeuk Kim <jaegeuk@kernel.org>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
  */
 #ifndef __F2FS_TRACE_H__
 #define __F2FS_TRACE_H__
 
-#ifdef CONFIG_F2FS_IO_TRACE
-#include <trace/events/f2fs.h>
+#ifdef CONFIG_HMFS_IO_TRACE
+#include <trace/events/hmfs.h>
 
 enum file_type {
 	__NORMAL_FILE,

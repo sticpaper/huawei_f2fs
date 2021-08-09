@@ -1,18 +1,15 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * f2fs shrinker support
  *   the basic infra was copied from fs/ubifs/shrinker.c
  *
  * Copyright (c) 2015 Motorola Mobility
  * Copyright (c) 2015 Jaegeuk Kim <jaegeuk@kernel.org>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
  */
 #include <linux/fs.h>
-#include <linux/f2fs_fs.h>
+#include <linux/hmfs_fs.h>
 
-#include "f2fs.h"
+#include "hmfs.h"
 #include "node.h"
 
 static LIST_HEAD(f2fs_list);
@@ -33,13 +30,13 @@ static unsigned long __count_free_nids(struct f2fs_sb_info *sbi)
 	return count > 0 ? count : 0;
 }
 
-unsigned long __count_extent_cache(struct f2fs_sb_info *sbi)
+static unsigned long __count_extent_cache(struct f2fs_sb_info *sbi)
 {
 	return atomic_read(&sbi->total_zombie_tree) +
 				atomic_read(&sbi->total_ext_node);
 }
 
-unsigned long f2fs_shrink_count(struct shrinker *shrink,
+unsigned long hmfs_shrink_count(struct shrinker *shrink,
 				struct shrink_control *sc)
 {
 	struct f2fs_sb_info *sbi;
@@ -75,7 +72,7 @@ unsigned long f2fs_shrink_count(struct shrinker *shrink,
 	return count;
 }
 
-unsigned long f2fs_shrink_scan(struct shrinker *shrink,
+unsigned long hmfs_shrink_scan(struct shrinker *shrink,
 				struct shrink_control *sc)
 {
 	unsigned long nr = sc->nr_to_scan;
@@ -105,15 +102,15 @@ unsigned long f2fs_shrink_scan(struct shrinker *shrink,
 		sbi->shrinker_run_no = run_no;
 
 		/* shrink extent cache entries */
-		freed += f2fs_shrink_extent_tree(sbi, nr >> 1);
+		freed += hmfs_shrink_extent_tree(sbi, nr >> 1);
 
 		/* shrink clean nat cache entries */
 		if (freed < nr)
-			freed += try_to_free_nats(sbi, nr - freed);
+			freed += hmfs_try_to_free_nats(sbi, nr - freed);
 
 		/* shrink free nids cache entries */
 		if (freed < nr)
-			freed += try_to_free_nids(sbi, nr - freed);
+			freed += hmfs_try_to_free_nids(sbi, nr - freed);
 
 		spin_lock(&f2fs_list_lock);
 		p = p->next;
@@ -126,16 +123,16 @@ unsigned long f2fs_shrink_scan(struct shrinker *shrink,
 	return freed;
 }
 
-void f2fs_join_shrinker(struct f2fs_sb_info *sbi)
+void hmfs_join_shrinker(struct f2fs_sb_info *sbi)
 {
 	spin_lock(&f2fs_list_lock);
 	list_add_tail(&sbi->s_list, &f2fs_list);
 	spin_unlock(&f2fs_list_lock);
 }
 
-void f2fs_leave_shrinker(struct f2fs_sb_info *sbi)
+void hmfs_leave_shrinker(struct f2fs_sb_info *sbi)
 {
-	f2fs_shrink_extent_tree(sbi, __count_extent_cache(sbi));
+	hmfs_shrink_extent_tree(sbi, __count_extent_cache(sbi));
 
 	spin_lock(&f2fs_list_lock);
 	list_del_init(&sbi->s_list);

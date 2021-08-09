@@ -1,12 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * fs/f2fs/node.h
  *
  * Copyright (c) 2012 Samsung Electronics Co., Ltd.
  *             http://www.samsung.com/
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
  */
 /* start node id of a node block dedicated to the given node id */
 #define	START_NID(nid) (((nid) / NAT_ENTRY_PER_BLOCK) * NAT_ENTRY_PER_BLOCK)
@@ -135,6 +132,11 @@ static inline bool excess_cached_nats(struct f2fs_sb_info *sbi)
 	return NM_I(sbi)->nat_cnt >= DEF_NAT_CACHE_THRESHOLD;
 }
 
+static inline bool excess_dirty_nodes(struct f2fs_sb_info *sbi)
+{
+	return get_pages(sbi, F2FS_DIRTY_NODES) >= sbi->blocks_per_seg * 8;
+}
+
 enum mem_type {
 	FREE_NIDS,	/* indicates the free nid list */
 	NAT_ENTRIES,	/* indicates the cached nat entry */
@@ -150,6 +152,9 @@ struct nat_entry_set {
 	struct list_head entry_list;	/* link with dirty nat entries */
 	nid_t set;			/* set number*/
 	unsigned int entry_cnt;		/* the # of nat entries in set */
+#ifdef CONFIG_HMFS_JOURNAL_APPEND
+	bool can_merge;
+#endif
 };
 
 struct free_nid {
@@ -180,7 +185,7 @@ static inline void get_nat_bitmap(struct f2fs_sb_info *sbi, void *addr)
 {
 	struct f2fs_nm_info *nm_i = NM_I(sbi);
 
-#ifdef CONFIG_F2FS_CHECK_FS
+#ifdef CONFIG_HMFS_CHECK_FS
 	if (memcmp(nm_i->nat_bitmap, nm_i->nat_bitmap_mir,
 						nm_i->bitmap_size))
 		f2fs_bug_on(sbi, 1);
@@ -226,7 +231,7 @@ static inline void set_to_next_nat(struct f2fs_nm_info *nm_i, nid_t start_nid)
 	unsigned int block_off = NAT_BLOCK_OFFSET(start_nid);
 
 	f2fs_change_bit(block_off, nm_i->nat_bitmap);
-#ifdef CONFIG_F2FS_CHECK_FS
+#ifdef CONFIG_HMFS_CHECK_FS
 	f2fs_change_bit(block_off, nm_i->nat_bitmap_mir);
 #endif
 }
@@ -290,12 +295,13 @@ static inline void copy_node_footer(struct page *dst, struct page *src)
 
 static inline void fill_node_footer_blkaddr(struct page *page, block_t blkaddr)
 {
+	struct f2fs_sb_info *sbi = F2FS_P_SB(page);
 	struct f2fs_checkpoint *ckpt = F2FS_CKPT(F2FS_P_SB(page));
 	struct f2fs_node *rn = F2FS_NODE(page);
 	__u64 cp_ver = cur_cp_version(ckpt);
 
 	if (__is_set_ckpt_flags(ckpt, CP_CRC_RECOVERY_FLAG))
-		cp_ver |= (cur_cp_crc(ckpt) << 32);
+		cp_ver |= (sbi->ckpt_crc << 32);
 
 	rn->footer.cp_ver = cpu_to_le64(cp_ver);
 	rn->footer.next_blkaddr = cpu_to_le32(blkaddr);
@@ -303,6 +309,7 @@ static inline void fill_node_footer_blkaddr(struct page *page, block_t blkaddr)
 
 static inline bool is_recoverable_dnode(struct page *page)
 {
+	struct f2fs_sb_info *sbi = F2FS_P_SB(page);
 	struct f2fs_checkpoint *ckpt = F2FS_CKPT(F2FS_P_SB(page));
 	__u64 cp_ver = cur_cp_version(ckpt);
 
@@ -311,8 +318,7 @@ static inline bool is_recoverable_dnode(struct page *page)
 		return (cp_ver << 32) == (cpver_of_node(page) << 32);
 
 	if (__is_set_ckpt_flags(ckpt, CP_CRC_RECOVERY_FLAG))
-		cp_ver |= (cur_cp_crc(ckpt) << 32);
-
+		cp_ver |= (sbi->ckpt_crc << 32);
 	return cp_ver == cpver_of_node(page);
 }
 
@@ -359,7 +365,7 @@ static inline int set_nid(struct page *p, int off, nid_t nid, bool i)
 {
 	struct f2fs_node *rn = F2FS_NODE(p);
 
-	f2fs_wait_on_page_writeback(p, NODE, true);
+	hmfs_wait_on_page_writeback(p, NODE, true);
 
 	if (i)
 		rn->i.i_nid[off - NODE_DIR1_BLOCK] = cpu_to_le32(nid);
@@ -444,6 +450,10 @@ static inline void set_mark(struct page *page, int mark, int type)
 	else
 		flag &= ~(0x1 << type);
 	rn->footer.flag = cpu_to_le32(flag);
+
+#ifdef CONFIG_HMFS_CHECK_FS
+	hmfs_inode_chksum_set(F2FS_P_SB(page), page);
+#endif
 }
 #define set_dentry_mark(page, mark)	set_mark(page, mark, DENT_BIT_SHIFT)
 #define set_fsync_mark(page, mark)	set_mark(page, mark, FSYNC_BIT_SHIFT)
