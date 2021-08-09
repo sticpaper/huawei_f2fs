@@ -14,47 +14,41 @@
 #include <linux/random.h>
 #include <linux/exportfs.h>
 #include <linux/blkdev.h>
-#include <linux/f2fs_fs.h>
+#include <linux/hmfs_fs.h>
 #include <linux/sysfs.h>
 
-#include "f2fs.h"
+#ifdef CONFIG_MAS_BLK
+#include <linux/workqueue.h>
+#endif
+
+#include "hmfs.h"
 #include "segment.h"
 
 /* Display on console */
 #define DISP(fmt, ptr, member)				\
 	do {						\
-		printk("F2FS-fs:%-30s\t\t" fmt, #member, ((ptr)->member));	\
+		printk("HMFS-fs:%-30s\t\t" fmt, #member, ((ptr)->member));	\
 	} while (0)
-
-#define DISP_u16(ptr, member)						\
-	do {								\
-		printk("F2FS-fs:%-30s" "\t\t[0x%8x : %u]\n",		\
-			#member, le16_to_cpu((ptr)->member),            \
-			le16_to_cpu((ptr)->member));	\
-	} while (0)
-
 
 #define DISP_u32(ptr, member)						\
 	do {								\
-		printk("F2FS-fs:%-30s" "\t\t[0x%8x : %u]\n",		\
-			#member, le32_to_cpu((ptr)->member),            \
-			le32_to_cpu((ptr)->member));	\
+		printk("HMFS-fs:%-30s" "\t\t[0x%8x : %u]\n",		\
+			#member, ((ptr)->member), ((ptr)->member));	\
 	} while (0)
 
 #define DISP_u64(ptr, member)						\
 	do {								\
-		printk("F2FS-fs:%-30s" "\t\t[0x%8llx : %llu]\n",		\
-			#member, le64_to_cpu((ptr)->member),            \
-			le64_to_cpu((ptr)->member));	\
+		printk("HMFS-fs:%-30s" "\t\t[0x%8llx : %llu]\n",		\
+			#member, ((ptr)->member), ((ptr)->member));	\
 	} while (0)
 
 
 /* print the f2fs superblock infomation to the kernel message,
  * it will be saved by DMD or panic log
  * simplified info of f2fs tool: fsck.f2fs
- * f2fs superblock struct locate in kernel/include/linux/f2fs_fs.h
+ * f2fs superblock struct locate in kernel/include/linux/hmfs_fs.h
  */
-void f2fs_print_raw_sb_info(struct f2fs_sb_info *sbi)
+void hmfs_print_raw_sb_info(struct f2fs_sb_info *sbi)
 {
 	struct f2fs_super_block *sb = NULL;
 
@@ -70,12 +64,12 @@ void f2fs_print_raw_sb_info(struct f2fs_sb_info *sbi)
 
 	printk("\n");
 	printk("+--------------------------------------------------------+\n");
-	printk("| Super block                                            |\n");
+	printk("| Super block						 |\n");
 	printk("+--------------------------------------------------------+\n");
 
 	DISP_u32(sb, magic);
-	DISP_u16(sb, major_ver);
-	DISP_u16(sb, minor_ver);
+	DISP_u32(sb, major_ver);
+	DISP_u32(sb, minor_ver);
 	DISP_u32(sb, log_sectorsize);
 	DISP_u32(sb, log_sectors_per_block);
 
@@ -111,7 +105,7 @@ void f2fs_print_raw_sb_info(struct f2fs_sb_info *sbi)
 	printk("\n\n");
 }
 
-void f2fs_print_ckpt_info(struct f2fs_sb_info *sbi)
+void hmfs_print_ckpt_info(struct f2fs_sb_info *sbi)
 {
 	struct f2fs_checkpoint *cp = NULL;
 
@@ -127,7 +121,7 @@ void f2fs_print_ckpt_info(struct f2fs_sb_info *sbi)
 
 	printk("\n");
 	printk("+--------------------------------------------------------+\n");
-	printk("| Checkpoint                                             |\n");
+	printk("| Checkpoint						 |\n");
 	printk("+--------------------------------------------------------+\n");
 
 	DISP_u64(cp, checkpoint_ver);
@@ -144,9 +138,10 @@ void f2fs_print_ckpt_info(struct f2fs_sb_info *sbi)
 	DISP_u32(cp, cur_node_segno[1]);
 	DISP_u32(cp, cur_node_segno[2]);
 
-	DISP_u16(cp, cur_node_blkoff[0]);
-	DISP_u16(cp, cur_node_blkoff[1]);
-	DISP_u16(cp, cur_node_blkoff[2]);
+	DISP_u32(cp, cur_node_blkoff[0]);
+	DISP_u32(cp, cur_node_blkoff[1]);
+	DISP_u32(cp, cur_node_blkoff[2]);
+
 
 	DISP_u32(cp, alloc_type[CURSEG_HOT_DATA]);
 	DISP_u32(cp, alloc_type[CURSEG_WARM_DATA]);
@@ -155,9 +150,9 @@ void f2fs_print_ckpt_info(struct f2fs_sb_info *sbi)
 	DISP_u32(cp, cur_data_segno[1]);
 	DISP_u32(cp, cur_data_segno[2]);
 
-	DISP_u16(cp, cur_data_blkoff[0]);
-	DISP_u16(cp, cur_data_blkoff[1]);
-	DISP_u16(cp, cur_data_blkoff[2]);
+	DISP_u32(cp, cur_data_blkoff[0]);
+	DISP_u32(cp, cur_data_blkoff[1]);
+	DISP_u32(cp, cur_data_blkoff[2]);
 
 	DISP_u32(cp, ckpt_flags);
 	DISP_u32(cp, cp_pack_total_block_count);
@@ -174,60 +169,156 @@ void f2fs_print_ckpt_info(struct f2fs_sb_info *sbi)
 	printk("\n\n");
 }
 
-extern int f2fs_fill_super_done;
-void f2fs_print_sbi_info(struct f2fs_sb_info *sbi)
+void hmfs_print_sbi_info(struct f2fs_sb_info *sbi)
 {
-	if (!f2fs_fill_super_done)
+	if (sbi == NULL || !sbi->print_sbi_safe)
 		return;
-	if (sbi == NULL)
-		return;
-	f2fs_msg(sbi->sb, KERN_ALERT, "\n");
-	f2fs_msg(sbi->sb, KERN_ALERT, "+--------------------------------------------------------+\n");
-	f2fs_msg(sbi->sb, KERN_ALERT, "|       SBI(Real time dirty nodes/segments info)         |\n");
-	f2fs_msg(sbi->sb, KERN_ALERT, "+--------------------------------------------------------+\n");
 
-	f2fs_msg(sbi->sb, KERN_ALERT, "ndirty_node: %d\n", get_pages(sbi, F2FS_DIRTY_NODES));
-	f2fs_msg(sbi->sb, KERN_ALERT, "ndirty_dent: %d\n", get_pages(sbi, F2FS_DIRTY_DENTS));
-	f2fs_msg(sbi->sb, KERN_ALERT, "ndirty_meta: %d\n", get_pages(sbi, F2FS_DIRTY_META));
-	f2fs_msg(sbi->sb, KERN_ALERT, "ndirty_data: %d\n", get_pages(sbi, F2FS_DIRTY_DATA));
-#ifdef CONFIG_F2FS_STAT_FS
-	f2fs_msg(sbi->sb, KERN_ALERT, "ndirty_files: %d\n", sbi->ndirty_inode[DIR_INODE]);
-#endif
-	f2fs_msg(sbi->sb, KERN_ALERT, "inmem_pages: %d\n", get_pages(sbi, F2FS_INMEM_PAGES));
-	f2fs_msg(sbi->sb, KERN_ALERT, "total_count: %d\n", ((unsigned int)sbi->user_block_count)/((unsigned int)sbi->blocks_per_seg));
-	f2fs_msg(sbi->sb, KERN_ALERT, "rsvd_segs: %d\n", reserved_segments(sbi));
-	f2fs_msg(sbi->sb, KERN_ALERT, "overp_segs: %d\n", overprovision_segments(sbi));
-	f2fs_msg(sbi->sb, KERN_ALERT, "valid_count: %d\n", valid_user_blocks(sbi));
-#ifdef CONFIG_F2FS_STAT_FS
+	hmfs_msg(sbi->sb, KERN_ALERT, "\n");
+	hmfs_msg(sbi->sb, KERN_ALERT, "+--------------------------------------------------------+\n");
+	hmfs_msg(sbi->sb, KERN_ALERT, "|       SBI(Real time dirty nodes/segments info)		|\n");
+	hmfs_msg(sbi->sb, KERN_ALERT, "+--------------------------------------------------------+\n");
+
+	hmfs_msg(sbi->sb, KERN_ALERT, "ndirty_node: %lld\n", get_pages(sbi, F2FS_DIRTY_NODES));
+	hmfs_msg(sbi->sb, KERN_ALERT, "ndirty_dent: %lld\n", get_pages(sbi, F2FS_DIRTY_DENTS));
+	hmfs_msg(sbi->sb, KERN_ALERT, "ndirty_meta: %lld\n", get_pages(sbi, F2FS_DIRTY_META));
+	hmfs_msg(sbi->sb, KERN_ALERT, "ndirty_data: %lld\n", get_pages(sbi, F2FS_DIRTY_DATA));
+	hmfs_msg(sbi->sb, KERN_ALERT, "ndirty_files: %d\n", sbi->ndirty_inode[DIR_INODE]);
+	hmfs_msg(sbi->sb, KERN_ALERT, "inmem_pages: %lld\n", get_pages(sbi, F2FS_INMEM_PAGES));
+	if (likely(SM_I(sbi))) {
+		hmfs_msg(sbi->sb, KERN_ALERT, "rsvd_segs: %d\n", reserved_segments(sbi));
+		hmfs_msg(sbi->sb, KERN_ALERT, "overp_segs: %d\n", overprovision_segments(sbi));
+		if (likely(FREE_I(sbi))) {
+			hmfs_msg(sbi->sb, KERN_ALERT, "free_segs: %d\n", free_segments(sbi));
+			hmfs_msg(sbi->sb, KERN_ALERT, "free_secs: %d\n", free_sections(sbi));
+		}
+		if (likely(DIRTY_I(sbi))) {
+			hmfs_msg(sbi->sb, KERN_ALERT, "prefree_count: %d\n", prefree_segments(sbi));
+			hmfs_msg(sbi->sb, KERN_ALERT, "dirty_count: %d\n", dirty_segments(sbi));
+		}
+		if (likely(SIT_I(sbi)))
+			hmfs_msg(sbi->sb, KERN_ALERT, "dirty_nats: %d\n", SIT_I(sbi)->dirty_sentries);
+	}
+	hmfs_msg(sbi->sb, KERN_ALERT, "total_count: %d\n", ((unsigned int)sbi->user_block_count)/((unsigned int)sbi->blocks_per_seg));
+	hmfs_msg(sbi->sb, KERN_ALERT, "valid_count: %d\n", valid_user_blocks(sbi));
 	/*lint -save -e529 -e438*/
-	f2fs_msg(sbi->sb, KERN_ALERT, "inline_attr: %d\n", atomic_read(&sbi->inline_xattr));
-	f2fs_msg(sbi->sb, KERN_ALERT, "inline_inode: %d\n", atomic_read(&sbi->inline_inode));
-	f2fs_msg(sbi->sb, KERN_ALERT, "inline_dir: %d\n", atomic_read(&sbi->inline_dir));
+	hmfs_msg(sbi->sb, KERN_ALERT, "inline_attr: %d\n", atomic_read(&sbi->inline_xattr));
+	hmfs_msg(sbi->sb, KERN_ALERT, "inline_inode: %d\n", atomic_read(&sbi->inline_inode));
+	hmfs_msg(sbi->sb, KERN_ALERT, "inline_dir: %d\n", atomic_read(&sbi->inline_dir));
 	/*lint -restore*/
-#endif
-	f2fs_msg(sbi->sb, KERN_ALERT, "utilization: %d\n", utilization(sbi));
+	if (likely(sbi->user_block_count))
+		hmfs_msg(sbi->sb, KERN_ALERT, "utilization: %d\n", utilization(sbi));
+	if (likely(sbi->node_inode && sbi->node_inode->i_mapping))
+		hmfs_msg(sbi->sb, KERN_ALERT, "node_pages: %d\n",(int)NODE_MAPPING(sbi)->nrpages);
+	if (likely(sbi->meta_inode && sbi->meta_inode->i_mapping))
+		hmfs_msg(sbi->sb, KERN_ALERT, "meta_pages: %d\n",(int)META_MAPPING(sbi)->nrpages);
+	if (likely(NM_I(sbi)))
+		hmfs_msg(sbi->sb, KERN_ALERT, "nats: %d\n", NM_I(sbi)->nat_cnt);
 
-	f2fs_msg(sbi->sb, KERN_ALERT, "free_segs: %d\n", free_segments(sbi));
-	f2fs_msg(sbi->sb, KERN_ALERT, "free_secs: %d\n", free_sections(sbi));
-#ifdef CONFIG_F2FS_TURBO_ZONE
-	if (is_tz_existed(sbi))
-		f2fs_msg(sbi->sb, KERN_ALERT, "normal_free_segs: %d\n",
-			 get_free_segs_in_normal_zone(sbi));
-#endif
-	f2fs_msg(sbi->sb, KERN_ALERT, "prefree_count: %d\n", prefree_segments(sbi));
-	f2fs_msg(sbi->sb, KERN_ALERT, "dirty_count: %d\n", dirty_segments(sbi));
-	f2fs_msg(sbi->sb, KERN_ALERT, "node_pages: %d\n",(int)NODE_MAPPING(sbi)->nrpages);
-	f2fs_msg(sbi->sb, KERN_ALERT, "meta_pages: %d\n",(int)META_MAPPING(sbi)->nrpages);
-	f2fs_msg(sbi->sb, KERN_ALERT, "nats: %d\n", NM_I(sbi)->nat_cnt[TOTAL_NAT]);
-	f2fs_msg(sbi->sb, KERN_ALERT, "dirty_nats: %d\n", SIT_I(sbi)->dirty_sentries);
+	hmfs_msg(sbi->sb, KERN_ALERT, "segment_count[LFS]: %d\n", sbi->segment_count[0]);
+	hmfs_msg(sbi->sb, KERN_ALERT, "segment_count[SSR]: %d\n", sbi->segment_count[1]);
 
-#ifdef CONFIG_F2FS_STAT_FS
-	f2fs_msg(sbi->sb, KERN_ALERT, "segment_count[LFS]: %d\n", sbi->segment_count[0]);
-	f2fs_msg(sbi->sb, KERN_ALERT, "segment_count[SSR]: %d\n", sbi->segment_count[1]);
+	hmfs_msg(sbi->sb, KERN_ALERT, "block_count[LFS]: %d\n", sbi->block_count[0]);
+	hmfs_msg(sbi->sb, KERN_ALERT, "block_count[SSR]: %d\n", sbi->block_count[1]);
 
-	f2fs_msg(sbi->sb, KERN_ALERT, "block_count[LFS]: %d\n", sbi->block_count[0]);
-	f2fs_msg(sbi->sb, KERN_ALERT, "block_count[SSR]: %d\n", sbi->block_count[1]);
-#endif
-
-	f2fs_msg(sbi->sb, KERN_ALERT, "\n\n");
+	hmfs_msg(sbi->sb, KERN_ALERT, "\n\n");
 }
+
+/* Display on console for little endian disk data*/
+#define DISP_LE_u16(ptr, member)						\
+	do {								\
+		printk("HMFS-fs:%-30s" "\t\t[0x%8x : %u]\n",		\
+			#member, le16_to_cpu(((ptr)->member)), le16_to_cpu(((ptr)->member)));	\
+	} while (0)
+
+#define DISP_LE_u32(ptr, member)						\
+	do {								\
+		printk("HMFS-fs:%-30s" "\t\t[0x%8x : %u]\n",		\
+			#member, le32_to_cpu(((ptr)->member)), le32_to_cpu(((ptr)->member)));	\
+	} while (0)
+
+#define DISP_LE_u64(ptr, member)						\
+	do {								\
+		printk("HMFS-fs:%-30s" "\t\t[0x%8llx : %llu]\n",		\
+			#member, le64_to_cpu(((ptr)->member)), le64_to_cpu(((ptr)->member)));	\
+	} while (0)
+
+/* print f2fs_inode on disk*/
+void hmfs_print_inode(struct f2fs_inode *ri)
+{
+	if (ri == NULL) {
+		return;
+	}
+
+	printk("\n");
+	printk("+--------------------------------------------------------+\n");
+	printk("| HMFS inode dump					 |\n");
+	printk("+--------------------------------------------------------+\n");
+
+	DISP_LE_u16(ri, i_mode);
+	DISP_LE_u32(ri, i_uid);
+	DISP_LE_u32(ri, i_gid);
+	DISP_LE_u32(ri, i_links);
+	DISP_LE_u32(ri, i_size);
+	DISP_LE_u64(ri, i_blocks);
+	DISP_LE_u64(ri, i_atime);
+	DISP_LE_u64(ri, i_ctime);
+	DISP_LE_u64(ri, i_mtime);
+	DISP_LE_u32(ri, i_atime_nsec);
+	DISP_LE_u32(ri, i_ctime_nsec);
+	DISP_LE_u32(ri, i_mtime_nsec);
+	DISP_LE_u32(ri, i_generation);
+	DISP_LE_u32(ri, i_current_depth);
+	DISP_LE_u32(ri, i_xattr_nid);
+	DISP_LE_u32(ri, i_flags);
+	DISP_LE_u32(ri, i_pino);
+	DISP_LE_u32(ri, i_namelen);
+	printk("\n\n");
+}
+
+#ifdef CONFIG_MAS_BLK
+static unsigned int f2fs_free_size;
+static inline void __do_hmfs_print_frag_info(struct super_block *sb, void *arg)
+{
+	struct f2fs_sb_info *sbi = NULL;
+	unsigned long long total_size, free_size, undiscard_size;
+
+	if (sb->s_magic != HMFS_SUPER_MAGIC)
+		return;
+
+	sbi = F2FS_SB(sb);
+
+	total_size = blks_to_mb(sbi->user_block_count, sbi->blocksize);
+	free_size = blks_to_mb(sbi->user_block_count - valid_user_blocks(sbi),
+			sbi->blocksize);
+	undiscard_size = blks_to_mb(SM_I(sbi)->dcc_info->undiscard_blks,
+			sbi->blocksize);
+
+	f2fs_free_size += free_size;
+
+	pr_err("<hmfs> : size = %lluMB, free = %lluMB, undiscard = %lluMB, free_sec = %u\n",
+			total_size, free_size, undiscard_size,
+			free_sections(sbi));
+}
+
+/* get f2fs free_size */
+unsigned int hmfs_get_free_size(void)
+{
+	f2fs_free_size = 0;
+	iterate_supers(__do_hmfs_print_frag_info, NULL);
+	return f2fs_free_size;
+}
+EXPORT_SYMBOL(hmfs_get_free_size);
+
+static void do_hmfs_print_frag_info(struct work_struct *work)
+{
+	iterate_supers(__do_hmfs_print_frag_info, NULL);
+}
+
+static DECLARE_WORK(hmfs_print_frag_info_work, &do_hmfs_print_frag_info);
+
+void hmfs_print_frag_info(void)
+{
+	schedule_work(&hmfs_print_frag_info_work);
+}
+#endif

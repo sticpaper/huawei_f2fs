@@ -9,11 +9,11 @@
  */
 
 #include <linux/fs.h>
-#include <linux/f2fs_fs.h>
+#include <linux/hmfs_fs.h>
 
-#include "f2fs.h"
+#include "hmfs.h"
 #include "node.h"
-#include <trace/events/f2fs.h>
+#include <trace/events/hmfs.h>
 
 static struct rb_entry *__lookup_rb_tree_fast(struct rb_entry *cached_re,
 							unsigned int ofs)
@@ -46,7 +46,7 @@ static struct rb_entry *__lookup_rb_tree_slow(struct rb_root_cached *root,
 	return NULL;
 }
 
-struct rb_entry *f2fs_lookup_rb_tree(struct rb_root_cached *root,
+struct rb_entry *hmfs_lookup_rb_tree(struct rb_root_cached *root,
 				struct rb_entry *cached_re, unsigned int ofs)
 {
 	struct rb_entry *re;
@@ -58,7 +58,27 @@ struct rb_entry *f2fs_lookup_rb_tree(struct rb_root_cached *root,
 	return re;
 }
 
-struct rb_node **f2fs_lookup_rb_tree_for_insert(struct f2fs_sb_info *sbi,
+struct rb_node **__hmfs_lookup_rb_tree_ext(struct f2fs_sb_info *sbi,
+			       struct rb_root *root, struct rb_node **parent,
+			       unsigned long long key)
+{
+	struct rb_node **p = &root->rb_node;
+	struct rb_entry *re;
+
+	while (*p) {
+		*parent = *p;
+		re = rb_entry(*parent, struct rb_entry, rb_node);
+
+		if (key < re->key)
+			p = &(*p)->rb_left;
+		else
+			p = &(*p)->rb_right;
+	}
+
+	return p;
+}
+
+struct rb_node **hmfs_lookup_rb_tree_for_insert(struct f2fs_sb_info *sbi,
 				struct rb_root_cached *root,
 				struct rb_node **parent,
 				unsigned int ofs, bool *leftmost)
@@ -92,7 +112,7 @@ struct rb_node **f2fs_lookup_rb_tree_for_insert(struct f2fs_sb_info *sbi,
  * in order to simpfy the insertion after.
  * tree must stay unchanged between lookup and insertion.
  */
-struct rb_entry *f2fs_lookup_rb_tree_ret(struct rb_root_cached *root,
+struct rb_entry *hmfs_lookup_rb_tree_ret(struct rb_root_cached *root,
 				struct rb_entry *cached_re,
 				unsigned int ofs,
 				struct rb_entry **prev_entry,
@@ -165,10 +185,10 @@ lookup_neighbors:
 	return re;
 }
 
-bool f2fs_check_rb_tree_consistence(struct f2fs_sb_info *sbi,
+bool f2fs_check_rb_tree_consistence_discard(struct f2fs_sb_info *sbi,
 						struct rb_root_cached *root)
 {
-#ifdef CONFIG_F2FS_CHECK_FS
+#ifdef CONFIG_HMFS_CHECK_FS
 	struct rb_node *cur = rb_first_cached(root), *next;
 	struct rb_entry *cur_re, *next_re;
 
@@ -184,7 +204,7 @@ bool f2fs_check_rb_tree_consistence(struct f2fs_sb_info *sbi,
 		next_re = rb_entry(next, struct rb_entry, rb_node);
 
 		if (cur_re->ofs + cur_re->len > next_re->ofs) {
-			f2fs_msg(sbi->sb, KERN_INFO, "inconsistent rbtree, "
+			hmfs_msg(sbi->sb, KERN_INFO, "inconsistent rbtree, "
 				"cur(%u, %u) next(%u, %u)",
 				cur_re->ofs, cur_re->len,
 				next_re->ofs, next_re->len);
@@ -326,7 +346,7 @@ static void __drop_largest_extent(struct extent_tree *et,
 }
 
 /* return true, if inode page is changed */
-static bool __f2fs_init_extent_tree(struct inode *inode, struct f2fs_extent *i_ext)
+static bool __hmfs_init_extent_tree(struct inode *inode, struct f2fs_extent *i_ext)
 {
 	struct f2fs_sb_info *sbi = F2FS_I_SB(inode);
 	struct extent_tree *et;
@@ -364,9 +384,9 @@ out:
 	return false;
 }
 
-bool f2fs_init_extent_tree(struct inode *inode, struct f2fs_extent *i_ext)
+bool hmfs_init_extent_tree(struct inode *inode, struct f2fs_extent *i_ext)
 {
-	bool ret =  __f2fs_init_extent_tree(inode, i_ext);
+	bool ret =  __hmfs_init_extent_tree(inode, i_ext);
 
 	if (!F2FS_I(inode)->extent_tree)
 		set_inode_flag(inode, FI_NO_EXTENT);
@@ -384,7 +404,7 @@ static bool f2fs_lookup_extent_tree(struct inode *inode, pgoff_t pgofs,
 
 	f2fs_bug_on(sbi, !et);
 
-	trace_f2fs_lookup_extent_tree_start(inode, pgofs);
+	trace_hmfs_lookup_extent_tree_start(inode, pgofs);
 
 	read_lock(&et->lock);
 
@@ -396,7 +416,7 @@ static bool f2fs_lookup_extent_tree(struct inode *inode, pgoff_t pgofs,
 		goto out;
 	}
 
-	en = (struct extent_node *)f2fs_lookup_rb_tree(&et->root,
+	en = (struct extent_node *)hmfs_lookup_rb_tree(&et->root,
 				(struct rb_entry *)et->cached_en, pgofs);
 	if (!en)
 		goto out;
@@ -418,7 +438,7 @@ out:
 	stat_inc_total_hit(sbi);
 	read_unlock(&et->lock);
 
-	trace_f2fs_lookup_extent_tree_end(inode, pgofs, ei);
+	trace_hmfs_lookup_extent_tree_end(inode, pgofs, ei);
 	return ret;
 }
 
@@ -477,7 +497,7 @@ static struct extent_node *__insert_extent_tree(struct f2fs_sb_info *sbi,
 
 	leftmost = true;
 
-	p = f2fs_lookup_rb_tree_for_insert(sbi, &et->root, &parent,
+	p = hmfs_lookup_rb_tree_for_insert(sbi, &et->root, &parent,
 						ei->fofs, &leftmost);
 do_insert:
 	en = __attach_extent_node(sbi, et, ei, parent, p, leftmost);
@@ -495,7 +515,7 @@ do_insert:
 }
 
 static void f2fs_update_extent_tree_range(struct inode *inode,
-				pgoff_t fofs, block_t blkaddr, unsigned int len)
+		pgoff_t fofs, block_t blkaddr, unsigned int len)
 {
 	struct f2fs_sb_info *sbi = F2FS_I_SB(inode);
 	struct extent_tree *et = F2FS_I(inode)->extent_tree;
@@ -511,7 +531,7 @@ static void f2fs_update_extent_tree_range(struct inode *inode,
 	if (!et)
 		return;
 
-	trace_f2fs_update_extent_tree_range(inode, fofs, blkaddr, len);
+	trace_hmfs_update_extent_tree_range(inode, fofs, blkaddr, len);
 
 	write_lock(&et->lock);
 
@@ -530,7 +550,7 @@ static void f2fs_update_extent_tree_range(struct inode *inode,
 	__drop_largest_extent(et, fofs, len);
 
 	/* 1. lookup first extent node in range [fofs, fofs + len - 1] */
-	en = (struct extent_node *)f2fs_lookup_rb_tree_ret(&et->root,
+	en = (struct extent_node *)hmfs_lookup_rb_tree_ret(&et->root,
 					(struct rb_entry *)et->cached_en, fofs,
 					(struct rb_entry **)&prev_en,
 					(struct rb_entry **)&next_en,
@@ -599,7 +619,6 @@ static void f2fs_update_extent_tree_range(struct inode *inode,
 
 	/* 3. update extent in extent cache */
 	if (blkaddr) {
-
 		set_extent_info(&ei, fofs, blkaddr, len);
 		if (!__try_merge_extent_node(sbi, et, &ei, prev_en, next_en))
 			__insert_extent_tree(sbi, et, &ei,
@@ -625,11 +644,22 @@ static void f2fs_update_extent_tree_range(struct inode *inode,
 
 	write_unlock(&et->lock);
 
-	if (updated)
-		f2fs_mark_inode_dirty_sync(inode, true);
+	if (updated) {
+		bool dirtied = is_inode_flag_set(inode, FI_DIRTY_INODE);
+		hmfs_mark_inode_dirty_sync(inode, true);
+
+		/*
+		 * Use oob info, we can recovery extent after SPOR.
+		 * So mark inode FI_ONLY_LARGEST_EXT_CHG to indicate
+		 * whether flushing inode or not in f2fs_do_sync_file.
+		 * In this way, we can speed up fsync with oob info.
+		 */
+		if (hmfs_is_oob_enable(sbi) && !dirtied)
+			set_inode_flag(inode, FI_ONLY_LARGEST_EXT_CHG);
+	}
 }
 
-unsigned int f2fs_shrink_extent_tree(struct f2fs_sb_info *sbi, int nr_shrink)
+unsigned int hmfs_shrink_extent_tree(struct f2fs_sb_info *sbi, int nr_shrink)
 {
 	struct extent_tree *et, *next;
 	struct extent_node *en;
@@ -700,12 +730,12 @@ free_node:
 unlock_out:
 	mutex_unlock(&sbi->extent_tree_lock);
 out:
-	trace_f2fs_shrink_extent_tree(sbi, node_cnt, tree_cnt);
+	trace_hmfs_shrink_extent_tree(sbi, node_cnt, tree_cnt);
 
 	return node_cnt + tree_cnt;
 }
 
-unsigned int f2fs_destroy_extent_node(struct inode *inode)
+unsigned int hmfs_destroy_extent_node(struct inode *inode)
 {
 	struct f2fs_sb_info *sbi = F2FS_I_SB(inode);
 	struct extent_tree *et = F2FS_I(inode)->extent_tree;
@@ -721,7 +751,7 @@ unsigned int f2fs_destroy_extent_node(struct inode *inode)
 	return node_cnt;
 }
 
-void f2fs_drop_extent_tree(struct inode *inode)
+void hmfs_drop_extent_tree(struct inode *inode)
 {
 	struct f2fs_sb_info *sbi = F2FS_I_SB(inode);
 	struct extent_tree *et = F2FS_I(inode)->extent_tree;
@@ -740,10 +770,10 @@ void f2fs_drop_extent_tree(struct inode *inode)
 	}
 	write_unlock(&et->lock);
 	if (updated)
-		f2fs_mark_inode_dirty_sync(inode, true);
+		hmfs_mark_inode_dirty_sync(inode, true);
 }
 
-void f2fs_destroy_extent_tree(struct inode *inode)
+void hmfs_destroy_extent_tree(struct inode *inode)
 {
 	struct f2fs_sb_info *sbi = F2FS_I_SB(inode);
 	struct extent_tree *et = F2FS_I(inode)->extent_tree;
@@ -762,7 +792,7 @@ void f2fs_destroy_extent_tree(struct inode *inode)
 	}
 
 	/* free all extent info belong to this extent tree */
-	node_cnt = f2fs_destroy_extent_node(inode);
+	node_cnt = hmfs_destroy_extent_node(inode);
 
 	/* delete extent tree entry in radix tree */
 	mutex_lock(&sbi->extent_tree_lock);
@@ -774,10 +804,10 @@ void f2fs_destroy_extent_tree(struct inode *inode)
 
 	F2FS_I(inode)->extent_tree = NULL;
 
-	trace_f2fs_destroy_extent_tree(inode, node_cnt);
+	trace_hmfs_destroy_extent_tree(inode, node_cnt);
 }
 
-bool f2fs_lookup_extent_cache(struct inode *inode, pgoff_t pgofs,
+bool hmfs_lookup_extent_cache(struct inode *inode, pgoff_t pgofs,
 					struct extent_info *ei)
 {
 	if (!f2fs_may_extent_tree(inode))
@@ -786,7 +816,7 @@ bool f2fs_lookup_extent_cache(struct inode *inode, pgoff_t pgofs,
 	return f2fs_lookup_extent_tree(inode, pgofs, ei);
 }
 
-void f2fs_update_extent_cache(struct dnode_of_data *dn)
+void hmfs_update_extent_cache(struct dnode_of_data *dn)
 {
 	pgoff_t fofs;
 	block_t blkaddr;
@@ -799,12 +829,12 @@ void f2fs_update_extent_cache(struct dnode_of_data *dn)
 	else
 		blkaddr = dn->data_blkaddr;
 
-	fofs = f2fs_start_bidx_of_node(ofs_of_node(dn->node_page), dn->inode) +
+	fofs = hmfs_start_bidx_of_node(ofs_of_node(dn->node_page), dn->inode) +
 								dn->ofs_in_node;
 	f2fs_update_extent_tree_range(dn->inode, fofs, blkaddr, 1);
 }
 
-void f2fs_update_extent_cache_range(struct dnode_of_data *dn,
+void hmfs_update_extent_cache_range(struct dnode_of_data *dn,
 				pgoff_t fofs, block_t blkaddr, unsigned int len)
 
 {
@@ -814,7 +844,7 @@ void f2fs_update_extent_cache_range(struct dnode_of_data *dn,
 	f2fs_update_extent_tree_range(dn->inode, fofs, blkaddr, len);
 }
 
-void f2fs_init_extent_cache_info(struct f2fs_sb_info *sbi)
+void hmfs_init_extent_cache_info(struct f2fs_sb_info *sbi)
 {
 	INIT_RADIX_TREE(&sbi->extent_tree_root, GFP_NOIO);
 	mutex_init(&sbi->extent_tree_lock);
@@ -826,7 +856,7 @@ void f2fs_init_extent_cache_info(struct f2fs_sb_info *sbi)
 	atomic_set(&sbi->total_ext_node, 0);
 }
 
-int __init f2fs_create_extent_cache(void)
+int __init hmfs_create_extent_cache(void)
 {
 	extent_tree_slab = f2fs_kmem_cache_create("f2fs_extent_tree",
 			sizeof(struct extent_tree));
@@ -841,7 +871,7 @@ int __init f2fs_create_extent_cache(void)
 	return 0;
 }
 
-void f2fs_destroy_extent_cache(void)
+void hmfs_destroy_extent_cache(void)
 {
 	kmem_cache_destroy(extent_node_slab);
 	kmem_cache_destroy(extent_tree_slab);

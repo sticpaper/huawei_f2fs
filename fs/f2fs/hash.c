@@ -11,11 +11,11 @@
  */
 #include <linux/types.h>
 #include <linux/fs.h>
-#include <linux/f2fs_fs.h>
+#include <linux/hmfs_fs.h>
 #include <linux/cryptohash.h>
 #include <linux/pagemap.h>
 
-#include "f2fs.h"
+#include "hmfs.h"
 
 /*
  * Hashing code copied from ext3
@@ -67,7 +67,7 @@ static void str2hashbuf(const unsigned char *msg, size_t len,
 		*buf++ = pad;
 }
 
-f2fs_hash_t f2fs_dentry_hash(const struct qstr *name_info,
+f2fs_hash_t hmfs_dentry_hash(const struct qstr *name_info,
 				struct fscrypt_name *fname)
 {
 	__u32 hash;

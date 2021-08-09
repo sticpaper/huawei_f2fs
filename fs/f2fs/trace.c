@@ -6,17 +6,15 @@
  * Copyright (c) 2014 Jaegeuk Kim <jaegeuk@kernel.org>
  */
 #include <linux/fs.h>
-#include <linux/f2fs_fs.h>
+#include <linux/hmfs_fs.h>
 #include <linux/sched.h>
 #include <linux/radix-tree.h>
 
-#include "f2fs.h"
-#define CREATE_TRACE_POINTS
+#include "hmfs.h"
 #include "trace.h"
 
-#ifdef CONFIG_F2FS_IO_TRACE
 static RADIX_TREE(pids, GFP_ATOMIC);
-static spinlock_t pids_lock;
+static struct mutex pids_lock;
 static struct last_io_info last_io;
 
 static inline void __print_last_io(void)
@@ -56,33 +54,27 @@ void f2fs_trace_pid(struct page *page)
 {
 	struct inode *inode = page->mapping->host;
 	pid_t pid = task_pid_nr(current);
-	void *p = NULL;
+	void *p;
 
 	set_page_private(page, (unsigned long)pid);
 
-retry:
 	if (radix_tree_preload(GFP_NOFS))
 		return;
 
-	spin_lock(&pids_lock);
+	mutex_lock(&pids_lock);
 	p = radix_tree_lookup(&pids, pid);
 	if (p == current)
 		goto out;
 	if (p)
 		radix_tree_delete(&pids, pid);
 
-	if (radix_tree_insert(&pids, pid, current)) {
-		spin_unlock(&pids_lock);
-		radix_tree_preload_end();
-		cond_resched();
-		goto retry;
-	}
+	f2fs_radix_tree_insert(&pids, pid, current);
 
 	trace_printk("%3x:%3x %4x %-16s\n",
 			MAJOR(inode->i_sb->s_dev), MINOR(inode->i_sb->s_dev),
 			pid, current->comm);
 out:
-	spin_unlock(&pids_lock);
+	mutex_unlock(&pids_lock);
 	radix_tree_preload_end();
 }
 
@@ -127,7 +119,7 @@ void f2fs_trace_ios(struct f2fs_io_info *fio, int flush)
 
 void f2fs_build_trace_ios(void)
 {
-	spin_lock_init(&pids_lock);
+	mutex_init(&pids_lock);
 }
 
 #define PIDVEC_SIZE	128
@@ -155,7 +147,7 @@ void f2fs_destroy_trace_ios(void)
 	pid_t next_pid = 0;
 	unsigned int found;
 
-	spin_lock(&pids_lock);
+	mutex_lock(&pids_lock);
 	while ((found = gang_lookup_pids(pid, next_pid, PIDVEC_SIZE))) {
 		unsigned idx;
 
@@ -163,6 +155,5 @@ void f2fs_destroy_trace_ios(void)
 		for (idx = 0; idx < found; idx++)
 			radix_tree_delete(&pids, pid[idx]);
 	}
-	spin_unlock(&pids_lock);
+	mutex_unlock(&pids_lock);
 }
-#endif
