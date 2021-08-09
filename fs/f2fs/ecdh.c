@@ -5,8 +5,8 @@
 #include <linux/string.h>
 #include <linux/completion.h>
 #include <linux/printk.h>
-#include <linux/f2fs_fs.h>
-#include "f2fs.h"
+#include <linux/hmfs_fs.h>
+#include "hmfs.h"
 #include "sdp_internal.h"
 
 #if F2FS_FS_SDP_ENCRYPTION
@@ -264,7 +264,7 @@ free_req:
 	return err;
 }
 
-int get_file_pubkey_shared_secret(unsigned int curve_id,
+int hmfs_get_file_pubkey_shared_secret(unsigned int curve_id,
 								  const u8 *dev_pub_key,
 								  unsigned int dev_pub_key_len,
 								  u8 *file_pub_key,
@@ -299,7 +299,7 @@ int get_file_pubkey_shared_secret(unsigned int curve_id,
 	return err;
 }
 
-int get_shared_secret(unsigned int curve_id, const u8 *dev_privkey,
+int hmfs_get_shared_secret(unsigned int curve_id, const u8 *dev_privkey,
 					  unsigned int dev_privkey_len, const u8 *file_pub_key,
 					  unsigned int file_pub_key_len, u8 *shared_secret,
 					  unsigned int shared_secret_len)

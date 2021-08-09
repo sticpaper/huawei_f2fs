@@ -6,11 +6,11 @@
  * Copyright (c) 2014 Jaegeuk Kim <jaegeuk@kernel.org>
  */
 #include <linux/fs.h>
-#include <linux/f2fs_fs.h>
+#include <linux/hmfs_fs.h>
 #include <linux/sched.h>
 #include <linux/radix-tree.h>
 
-#include "f2fs.h"
+#include "hmfs.h"
 #include "trace.h"
 
 static RADIX_TREE(pids, GFP_ATOMIC);

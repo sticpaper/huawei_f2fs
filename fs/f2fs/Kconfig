@@ -1,37 +1,37 @@
-config F2FS_FS
-	tristate "F2FS filesystem support"
+config HMFS_FS
+	tristate "HMFS filesystem support"
 	depends on BLOCK
 	select CRYPTO
 	select CRYPTO_CRC32
 	help
-	  F2FS is based on Log-structured File System (LFS), which supports
+	  HMFS is based on Log-structured File System (LFS), which supports
 	  versatile "flash-friendly" features. The design has been focused on
 	  addressing the fundamental issues in LFS, which are snowball effect
 	  of wandering tree and high cleaning overhead.
 
 	  Since flash-based storages show different characteristics according to
-	  the internal geometry or flash memory management schemes aka FTL, F2FS
+	  the internal geometry or flash memory management schemes aka FTL, HMFS
 	  and tools support various parameters not only for configuring on-disk
 	  layout, but also for selecting allocation and cleaning algorithms.
 
 	  If unsure, say N.
 
-config F2FS_STAT_FS
-	bool "F2FS Status Information"
-	depends on F2FS_FS && DEBUG_FS
+config HMFS_STAT_FS
+	bool "HMFS Status Information"
+	depends on HMFS_FS && DEBUG_FS
 	default y
 	help
-	  /sys/kernel/debug/f2fs/ contains information about all the partitions
-	  mounted as f2fs. Each file shows the whole f2fs information.
+	  /sys/kernel/debug/hmfs/ contains information about all the partitions
+	  mounted as hmfs. Each file shows the whole hmfs information.
 
-	  /sys/kernel/debug/f2fs/status includes:
-	    - major filesystem information managed by f2fs currently
+	  /sys/kernel/debug/hmfs/status includes:
+	    - major filesystem information managed by hmfs currently
 	    - average SIT information about whole segments
-	    - current memory footprint consumed by f2fs.
+	    - current memory footprint consumed by hmfs.
 
-config F2FS_FS_XATTR
-	bool "F2FS extended attributes"
-	depends on F2FS_FS
+config HMFS_FS_XATTR
+	bool "HMFS extended attributes"
+	depends on HMFS_FS
 	default y
 	help
 	  Extended attributes are name:value pairs associated with inodes by
@@ -40,9 +40,9 @@ config F2FS_FS_XATTR
 
 	  If unsure, say N.
 
-config F2FS_FS_POSIX_ACL
-	bool "F2FS Access Control Lists"
-	depends on F2FS_FS_XATTR
+config HMFS_FS_POSIX_ACL
+	bool "HMFS Access Control Lists"
+	depends on HMFS_FS_XATTR
 	select FS_POSIX_ACL
 	default y
 	help
@@ -54,90 +54,76 @@ config F2FS_FS_POSIX_ACL
 
 	  If you don't know what Access Control Lists are, say N
 
-config F2FS_FS_SECURITY
-	bool "F2FS Security Labels"
-	depends on F2FS_FS_XATTR
+config HMFS_FS_SECURITY
+	bool "HMFS Security Labels"
+	depends on HMFS_FS_XATTR
 	help
 	  Security labels provide an access control facility to support Linux
 	  Security Models (LSMs) accepted by AppArmor, SELinux, Smack and TOMOYO
 	  Linux. This option enables an extended attribute handler for file
-	  security labels in the f2fs filesystem, so that it requires enabling
+	  security labels in the hmfs filesystem, so that it requires enabling
 	  the extended attribute support in advance.
 
 	  If you are not using a security module, say N.
 
-config F2FS_CHECK_FS
-	bool "F2FS consistency checking feature"
-	depends on F2FS_FS
+config HMFS_CHECK_FS
+	bool "HMFS consistency checking feature"
+	depends on HMFS_FS
 	help
 	  Enables BUG_ONs which check the filesystem consistency in runtime.
 
 	  If you want to improve the performance, say N.
 
-config F2FS_FS_ENCRYPTION
-	bool "F2FS Encryption"
-	depends on F2FS_FS
-	depends on F2FS_FS_XATTR
+config HMFS_FS_ENCRYPTION
+	bool "HMFS Encryption"
+	depends on HMFS_FS
+	depends on HMFS_FS_XATTR
 	select FS_ENCRYPTION
 	help
-	  Enable encryption of f2fs files and directories.  This
+	  Enable encryption of hmfs files and directories.  This
 	  feature is similar to ecryptfs, but it is more memory
 	  efficient since it avoids caching the encrypted and
 	  decrypted pages in the page cache.
 
-config F2FS_IO_TRACE
-	bool "F2FS IO tracer"
-	depends on F2FS_FS
+config HMFS_IO_TRACE
+	bool "HMFS IO tracer"
+	depends on HMFS_FS
 	depends on FUNCTION_TRACER
 	help
-	  F2FS IO trace is based on a function trace, which gathers process
+	  HMFS IO trace is based on a function trace, which gathers process
 	  information and block IO patterns in the filesystem level.
 
 	  If unsure, say N.
 
-config HUAWEI_F2FS_DSM
-	bool "Listen f2fs kernel err"
+config HUAWEI_HMFS_DSM
+	bool "Listen hmfs kernel err"
 	default n
 	help
 		use huawei fs log radar
 
-config F2FS_FAULT_INJECTION
-	bool "F2FS fault injection facility"
-	depends on F2FS_FS
+config HMFS_FAULT_INJECTION
+	bool "HMFS fault injection facility"
+	depends on HMFS_FS
 	help
-	  Test F2FS to inject faults such as ENOMEM, ENOSPC, and so on.
+	  Test HMFS to inject faults such as ENOMEM, ENOSPC, and so on.
 
 	  If unsure, say N.
-config HISI_F2FS_MTIME
+config HISI_HMFS_MTIME
 	bool "reduce freq to update mtime"
 	default n
 	help
 		reduce freq to update mtime
 
-config F2FS_JOURNAL_APPEND
-	bool "F2FS append sit and nat journal size"
-	depends on F2FS_FS
+config HMFS_JOURNAL_APPEND
+	bool "HMFS append sit and nat journal size"
+	depends on HMFS_FS
 	default n
 	help
 	  append 2 blocks for sit and nat journal
 
-config F2FS_GRADING_SSR
-	bool "F2FS grading ssr"
-	depends on F2FS_FS
+config HMFS_GRADING_SSR
+	bool "HMFS grading ssr"
+	depends on HMFS_FS
 	default n
 	help
 	  use grading ssr to improve the end performance
-
-config F2FS_TURBO_ZONE
-	bool "F2FS turbo zone"
-	depends on F2FS_FS && MAS_BLK
-	default n
-	help
-	  support turbo zone managemnt with multi devices.
-
-config F2FS_TURBO_ZONE_V2
-	bool "F2FS turbo zone v2"
-	depends on F2FS_TURBO_ZONE
-	default n
-	help
-	  support turbo zone v2 to adapt dynamic slc zone.

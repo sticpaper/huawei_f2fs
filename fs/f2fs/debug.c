@@ -10,12 +10,12 @@
 
 #include <linux/fs.h>
 #include <linux/backing-dev.h>
-#include <linux/f2fs_fs.h>
+#include <linux/hmfs_fs.h>
 #include <linux/blkdev.h>
 #include <linux/debugfs.h>
 #include <linux/seq_file.h>
 
-#include "f2fs.h"
+#include "hmfs.h"
 #include "node.h"
 #include "segment.h"
 #include "gc.h"
@@ -85,6 +85,7 @@ static void update_general_status(struct f2fs_sb_info *sbi)
 	si->total_count = (int)sbi->user_block_count / sbi->blocks_per_seg;
 	si->rsvd_segs = reserved_segments(sbi);
 	si->overp_segs = overprovision_segments(sbi);
+	si->extra_op_segs = extra_op_segments(sbi);
 	si->valid_count = valid_user_blocks(sbi);
 	si->discard_blks = discard_blocks(sbi);
 	si->valid_node_count = valid_node_count(sbi);
@@ -100,6 +101,7 @@ static void update_general_status(struct f2fs_sb_info *sbi)
 	si->free_segs = free_segments(sbi);
 	si->free_secs = free_sections(sbi);
 	si->prefree_count = prefree_segments(sbi);
+	si->prefree_sec_count = prefree_sections(sbi);
 	si->dirty_count = dirty_segments(sbi);
 	if (sbi->node_inode)
 		si->node_pages = NODE_MAPPING(sbi)->nrpages;
@@ -113,9 +115,6 @@ static void update_general_status(struct f2fs_sb_info *sbi)
 	si->avail_nids = NM_I(sbi)->available_nids;
 	si->alloc_nids = NM_I(sbi)->nid_cnt[PREALLOC_NID];
 	si->bg_gc = sbi->bg_gc;
-#ifdef CONFIG_F2FS_TURBO_ZONE
-	si->turbo_bg_gc = sbi->tz_info.turbo_bg_gc;
-#endif
 	si->io_skip_bggc = sbi->io_skip_bggc;
 	si->other_skip_bggc = sbi->other_skip_bggc;
 	si->skipped_atomic_files[BG_GC] = sbi->skipped_atomic_files[BG_GC];
@@ -177,6 +176,15 @@ static void update_general_status(struct f2fs_sb_info *sbi)
 	}
 
 	si->inplace_count = atomic_read(&sbi->inplace_count);
+
+#ifdef CONFIG_HMFS_STAT_FS
+	for (i = 0; i < ALL_GC_LEVELS; i++) {
+		(si->gc_level)[i] =
+			(sbi->gc_stat.level)[i];
+		(si->gc_times)[i] =
+			(sbi->gc_stat.times)[i];
+	}
+#endif
 }
 
 /*
@@ -241,7 +249,7 @@ static void update_mem_info(struct f2fs_sb_info *sbi)
 	si->base_mem += 2 * SIT_VBLOCK_MAP_SIZE * MAIN_SEGS(sbi);
 	si->base_mem += SIT_VBLOCK_MAP_SIZE * MAIN_SEGS(sbi);
 	si->base_mem += SIT_VBLOCK_MAP_SIZE;
-	if (sbi->segs_per_sec > 1)
+	if (IS_MULTI_SEGS_IN_SEC(sbi))
 		si->base_mem += MAIN_SECS(sbi) * sizeof(struct sec_entry);
 	si->base_mem += __bitmap_size(sbi, SIT_BITMAP);
 
@@ -325,8 +333,8 @@ static int stat_show(struct seq_file *s, void *v)
 			   si->sit_area_segs, si->nat_area_segs);
 		seq_printf(s, "[SSA: %d] [MAIN: %d",
 			   si->ssa_area_segs, si->main_area_segs);
-		seq_printf(s, "(OverProv:%d Resv:%d)]\n\n",
-			   si->overp_segs, si->rsvd_segs);
+		seq_printf(s, "(OverProv:%d Extra:%d Resv:%d)]\n\n",
+			   si->overp_segs, si->extra_op_segs, si->rsvd_segs);
 		if (test_opt(si->sbi, DISCARD))
 			seq_printf(s, "Utilization: %u%% (%u valid blocks, %u discard blocks)\n",
 				si->utilization, si->valid_count, si->discard_blks);
@@ -392,6 +400,20 @@ static int stat_show(struct seq_file *s, void *v)
 			   si->dirty_seg[CURSEG_COLD_NODE],
 			   si->full_seg[CURSEG_COLD_NODE],
 			   si->valid_blks[CURSEG_COLD_NODE]);
+		seq_printf(s, "  - data move log1: %d, %d, %d, [dirty:%u, full:%u, valid_blks:%u]\n",
+			   si->curseg[CURSEG_DATA_MOVE1],
+			   si->cursec[CURSEG_DATA_MOVE1],
+			   si->curzone[CURSEG_DATA_MOVE1],
+			   si->dirty_seg[CURSEG_DATA_MOVE1],
+			   si->full_seg[CURSEG_DATA_MOVE1],
+			   si->valid_blks[CURSEG_DATA_MOVE1]);
+		seq_printf(s, "  - data move log2: %d, %d, %d, [dirty:%u, full:%u, valid_blks:%u]\n",
+			   si->curseg[CURSEG_DATA_MOVE2],
+			   si->cursec[CURSEG_DATA_MOVE2],
+			   si->curzone[CURSEG_DATA_MOVE2],
+			   si->dirty_seg[CURSEG_DATA_MOVE2],
+			   si->full_seg[CURSEG_DATA_MOVE2],
+			   si->valid_blks[CURSEG_DATA_MOVE2]);
 		seq_printf(s, "  - Fragment datas: %d, %d, %d, [dirty:%u, full:%u, valid_blks:%u]\n",
 			   si->curseg[CURSEG_FRAGMENT_DATA],
 			   si->cursec[CURSEG_FRAGMENT_DATA],
@@ -409,8 +431,8 @@ static int stat_show(struct seq_file *s, void *v)
 				   si->main_area_segs - si->dirty_count -
 				   si->prefree_count - si->free_segs,
 				   si->dirty_count);
-		seq_printf(s, "  - Prefree: %d\n  - Free: %d (%d)\n\n",
-			   si->prefree_count, si->free_segs, si->free_secs);
+		seq_printf(s, "  - Prefree: %d\n - Prefree(sec): %d\n  - Free: %d (%d)\n\n",
+				si->prefree_count, si->prefree_sec_count, si->free_segs, si->free_secs);
 		seq_printf(s, "CP calls: %d (BG: %d)\n",
 				si->cp_count, si->bg_cp_count);
 		seq_printf(s, "  - cp blocks : %u\n", si->meta_count[META_CP]);
@@ -426,6 +448,23 @@ static int stat_show(struct seq_file *s, void *v)
 				si->data_segs, si->bg_data_segs);
 		seq_printf(s, "  - node segments : %d (%d)\n",
 				si->node_segs, si->bg_node_segs);
+#ifdef CONFIG_HMFS_STAT_FS
+		seq_printf(s, "  - level info : %d %d %d %d %d %d\n",
+				si->gc_level[BG_GC_LEVEL1],
+				si->gc_level[BG_GC_LEVEL2],
+				si->gc_level[BG_GC_LEVEL3],
+				si->gc_level[BG_GC_LEVEL4],
+				si->gc_level[BG_GC_LEVEL5],
+				si->gc_level[BG_GC_LEVEL6]);
+		seq_printf(s, "  - gc times in diff level : %d %d %d %d %d %d %d\n",
+				si->gc_times[BG_GC_LEVEL1],
+				si->gc_times[BG_GC_LEVEL2],
+				si->gc_times[BG_GC_LEVEL3],
+				si->gc_times[BG_GC_LEVEL4],
+				si->gc_times[BG_GC_LEVEL5],
+				si->gc_times[BG_GC_LEVEL6],
+				si->gc_times[FG_GC_LEVEL]);
+#endif
 		seq_printf(s, "Try to move %d blocks (BG: %d)\n", si->tot_blks,
 				si->bg_data_blks + si->bg_node_blks);
 		seq_printf(s, "  - data blocks : %d (%d)\n", si->data_blks,
@@ -458,7 +497,7 @@ static int stat_show(struct seq_file *s, void *v)
 				si->hit_total, si->total_ext);
 		seq_printf(s, "  - Inner Struct Count: tree: %d(%d), node: %d\n",
 				si->ext_tree, si->zombie_tree, si->ext_node);
-		seq_puts(s, "\nBalancing F2FS Async:\n");
+		seq_puts(s, "\nBalancing HMFS Async:\n");
 		seq_printf(s, "  - IO_R (Data: %4d, Node: %4d, Meta: %4d\n",
 			   si->nr_rd_data, si->nr_rd_node, si->nr_rd_meta);
 		seq_printf(s, "  - IO_W (CP: %4d, Data: %4d, Flush: (%4d %4d %4d), "
@@ -525,34 +564,6 @@ static int stat_show(struct seq_file *s, void *v)
 		seq_printf(s, "  - paged : %llu KB\n",
 				si->page_mem >> 10);
 
-#ifdef CONFIG_F2FS_TURBO_ZONE
-		/* turbo zone info */
-		if (si->sbi->tz_info.total_segs > 0) {
-			seq_puts(s, "\n\nTurbo Zone Info:\n");
-			seq_printf(s, "  - enabled: %d\n",
-				(int)si->sbi->tz_info.enabled);
-			seq_printf(s, "  - switchable: %d\n",
-				(int)si->sbi->tz_info.switchable);
-			seq_printf(s, "  - total_segs: %u\n",
-				si->sbi->tz_info.total_segs);
-			seq_printf(s, "  - start_seg: %u\n",
-				si->sbi->tz_info.start_seg);
-			seq_printf(s, "  - end_seg: %u\n",
-				si->sbi->tz_info.end_seg);
-			seq_printf(s, "  - free_segs: %u\n",
-				si->sbi->tz_info.free_segs);
-			seq_printf(s, "  - written_valid_blocks: %u\n",
-				si->sbi->tz_info.written_valid_blocks);
-			seq_printf(s, "  - reserved_blks: %u\n",
-				si->sbi->tz_info.reserved_blks);
-			/* turbo gc */
-			seq_printf(s, "  - turbo_bg_gc: %d\n",
-				si->sbi->tz_info.turbo_bg_gc);
-			/* turbo bg gc total mv blocks*/
-			seq_printf(s, "  - turbo_bg_gc_tot_blks: %d\n",
-				si->turbo_bg_gc_tot_blks);
-		}
-#endif
 	}
 	mutex_unlock(&f2fs_stat_mutex);
 	return 0;
@@ -571,7 +582,7 @@ static const struct file_operations stat_fops = {
 	.release = single_release,
 };
 
-int f2fs_build_stats(struct f2fs_sb_info *sbi)
+int hmfs_build_stats(struct f2fs_sb_info *sbi)
 {
 	struct f2fs_super_block *raw_super = F2FS_RAW_SUPER(sbi);
 	struct f2fs_stat_info *si;
@@ -616,7 +627,7 @@ int f2fs_build_stats(struct f2fs_sb_info *sbi)
 	return 0;
 }
 
-void f2fs_destroy_stats(struct f2fs_sb_info *sbi)
+void hmfs_destroy_stats(struct f2fs_sb_info *sbi)
 {
 	struct f2fs_stat_info *si = F2FS_STAT(sbi);
 
@@ -627,11 +638,11 @@ void f2fs_destroy_stats(struct f2fs_sb_info *sbi)
 	kfree(si);
 }
 
-int __init f2fs_create_root_stats(void)
+int __init hmfs_create_root_stats(void)
 {
 	struct dentry *file;
 
-	f2fs_debugfs_root = debugfs_create_dir("f2fs", NULL);
+	f2fs_debugfs_root = debugfs_create_dir("hmfs", NULL);
 	if (!f2fs_debugfs_root)
 		return -ENOMEM;
 
@@ -646,7 +657,7 @@ int __init f2fs_create_root_stats(void)
 	return 0;
 }
 
-void f2fs_destroy_root_stats(void)
+void hmfs_destroy_root_stats(void)
 {
 	if (!f2fs_debugfs_root)
 		return;

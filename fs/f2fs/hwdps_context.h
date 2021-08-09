@@ -10,18 +10,18 @@
 #ifdef CONFIG_HWDPS
 #include <linux/fs.h>
 
-s32 f2fs_get_hwdps_attr(struct inode *inode, void *buf, size_t len, u32 flags,
-	struct page *page);
+s32 hmfs_get_hwdps_attr(struct inode *inode, void *buf, size_t len, u32 flags,
+	struct page *dpage);
 
-s32 f2fs_set_hwdps_attr(struct inode *inode, const void *attr, size_t len,
+s32 hmfs_set_hwdps_attr(struct inode *inode, const void *attr, size_t len,
 	void *fs_data);
 
-s32 f2fs_update_hwdps_attr(struct inode *inode, const void *attr,
+s32 hmfs_update_hwdps_attr(struct inode *inode, const void *attr,
 	size_t len, void *fs_data);
 
-s32 f2fs_get_hwdps_flags(struct inode *inode, void *fs_data, u32 *flags);
+s32 hmfs_get_hwdps_flags(struct inode *inode, void *fs_data, u32 *flags);
 
-s32 f2fs_set_hwdps_flags(struct inode *inode, void *fs_data, u32 *flags);
+s32 hmfs_set_hwdps_flags(struct inode *inode, void *fs_data, u32 *flags);
 
 #endif
 #endif

@@ -40,6 +40,7 @@ struct fscrypt_dps_policy {
 	__u8 version;
 	__u8 reserved[RESERVED_DATA_LEN];
 } __packed;
+
 #endif
 
 #define F2FS_IOC_SET_SDP_ENCRYPTION_POLICY     _IOW(F2FS_IOCTL_MAGIC, 80,\
@@ -49,19 +50,13 @@ struct fscrypt_dps_policy {
 #define F2FS_IOC_GET_ENCRYPTION_POLICY_TYPE    _IOR(F2FS_IOCTL_MAGIC, 82,\
 	struct fscrypt_policy_type)
 #ifdef CONFIG_HWDPS
-#define F2FS_IOC_SET_DPS_ENCRYPTION_POLICY     _IOW(F2FS_IOCTL_MAGIC, 83,\
+#define F2FS_IOC_SET_DPS_ENCRYPTION_POLICY     _IOW(F2FS_IOCTL_MAGIC, 83, \
 	struct fscrypt_dps_policy)
 #endif
 
 struct f2fs_sdp_fscrypt_operations {
 	int (*get_sdp_context)(struct inode *, void *, size_t, void *);
 	int (*set_sdp_context)(struct inode *, const void *, size_t, void *);
-#ifdef CONFIG_SCSI_UFS_ENHANCED_INLINE_CRYPTO_V3
-	int (*get_sdp_metadata_context)(struct inode *, void *, size_t,
-					void *);
-	int (*set_sdp_metadata_context)(struct inode *, const void *, size_t,
-					void *);
-#endif
 	int (*update_sdp_context)(struct inode *, const void *, size_t, void *);
 	int (*update_context)(struct inode *, const void *, size_t, void *);
 	int (*get_sdp_encrypt_flags)(struct inode *, void *, u32 *);
@@ -71,25 +66,25 @@ struct f2fs_sdp_fscrypt_operations {
 /*
  * policy.c
  */
-int f2fs_ioc_set_sdp_encryption_policy(struct file *filp, unsigned long arg);
-int f2fs_ioc_get_sdp_encryption_policy(struct file *filp, unsigned long arg);
-int f2fs_ioc_get_encryption_policy_type(struct file *filp, unsigned long arg);
+int hmfs_ioc_set_sdp_encryption_policy(struct file *filp, unsigned long arg);
+int hmfs_ioc_get_sdp_encryption_policy(struct file *filp, unsigned long arg);
+int hmfs_ioc_get_encryption_policy_type(struct file *filp, unsigned long arg);
 #ifdef CONFIG_HWDPS
-int f2fs_ioc_set_dps_encryption_policy(struct file *filp, unsigned long arg);
+int hmfs_ioc_set_dps_encryption_policy(struct file *filp, unsigned long arg);
 #endif
-int f2fs_is_file_sdp_encrypted(struct inode *inode);
-int f2fs_sdp_crypt_inherit(struct inode *parent, struct inode *child,
+int hmfs_is_file_sdp_encrypted(struct inode *inode);
+int hmfs_sdp_crypt_inherit(struct inode *parent, struct inode *child,
 			   void *dpage, void *fs_data);
 
 /*
  * keyinfo.c
  */
-int f2fs_get_crypt_keyinfo(struct inode *inode, void *fs_data, int *flag);
+int hmfs_get_crypt_keyinfo(struct inode *inode, void *fs_data, int *flag);
 
 /*
  * sdp_context.c
  */
-extern const struct f2fs_sdp_fscrypt_operations f2fs_sdp_cryptops;
+extern const struct f2fs_sdp_fscrypt_operations hmfs_sdp_cryptops;
 #endif
 #endif
 

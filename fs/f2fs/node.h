@@ -152,8 +152,7 @@ struct nat_entry_set {
 	struct list_head entry_list;	/* link with dirty nat entries */
 	nid_t set;			/* set number*/
 	unsigned int entry_cnt;		/* the # of nat entries in set */
-#ifdef CONFIG_F2FS_JOURNAL_APPEND
-	unsigned long mtime;
+#ifdef CONFIG_HMFS_JOURNAL_APPEND
 	bool can_merge;
 #endif
 };
@@ -186,7 +185,7 @@ static inline void get_nat_bitmap(struct f2fs_sb_info *sbi, void *addr)
 {
 	struct f2fs_nm_info *nm_i = NM_I(sbi);
 
-#ifdef CONFIG_F2FS_CHECK_FS
+#ifdef CONFIG_HMFS_CHECK_FS
 	if (memcmp(nm_i->nat_bitmap, nm_i->nat_bitmap_mir,
 						nm_i->bitmap_size))
 		f2fs_bug_on(sbi, 1);
@@ -232,7 +231,7 @@ static inline void set_to_next_nat(struct f2fs_nm_info *nm_i, nid_t start_nid)
 	unsigned int block_off = NAT_BLOCK_OFFSET(start_nid);
 
 	f2fs_change_bit(block_off, nm_i->nat_bitmap);
-#ifdef CONFIG_F2FS_CHECK_FS
+#ifdef CONFIG_HMFS_CHECK_FS
 	f2fs_change_bit(block_off, nm_i->nat_bitmap_mir);
 #endif
 }
@@ -366,7 +365,7 @@ static inline int set_nid(struct page *p, int off, nid_t nid, bool i)
 {
 	struct f2fs_node *rn = F2FS_NODE(p);
 
-	f2fs_wait_on_page_writeback(p, NODE, true);
+	hmfs_wait_on_page_writeback(p, NODE, true);
 
 	if (i)
 		rn->i.i_nid[off - NODE_DIR1_BLOCK] = cpu_to_le32(nid);
@@ -452,8 +451,8 @@ static inline void set_mark(struct page *page, int mark, int type)
 		flag &= ~(0x1 << type);
 	rn->footer.flag = cpu_to_le32(flag);
 
-#ifdef CONFIG_F2FS_CHECK_FS
-	f2fs_inode_chksum_set(F2FS_P_SB(page), page);
+#ifdef CONFIG_HMFS_CHECK_FS
+	hmfs_inode_chksum_set(F2FS_P_SB(page), page);
 #endif
 }
 #define set_dentry_mark(page, mark)	set_mark(page, mark, DENT_BIT_SHIFT)

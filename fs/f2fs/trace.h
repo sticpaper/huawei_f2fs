@@ -8,8 +8,8 @@
 #ifndef __F2FS_TRACE_H__
 #define __F2FS_TRACE_H__
 
-#ifdef CONFIG_F2FS_IO_TRACE
-#include <trace/events/f2fs.h>
+#ifdef CONFIG_HMFS_IO_TRACE
+#include <trace/events/hmfs.h>
 
 enum file_type {
 	__NORMAL_FILE,

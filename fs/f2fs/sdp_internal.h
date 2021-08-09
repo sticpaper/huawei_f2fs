@@ -4,7 +4,6 @@
  * Create: 2017-11-10
  * History: 2020-10-10 add hwdps
  */
-
 #ifndef __SDP_INTERNAL_H__
 #define __SDP_INTERNAL_H__
 
@@ -12,7 +11,6 @@
 #include <linux/types.h>
 #include <crypto/kpp.h>
 #include <crypto/ecdh.h>
-#include "sdp.h"
 
 #if F2FS_FS_SDP_ENCRYPTION
 
@@ -25,19 +23,19 @@
 #endif
 
 #define F2FS_XATTR_SDP_ECE_ENABLE_FLAG	(0x01)
-#define F2FS_XATTR_SDP_ECE_CONFIG_FLAG	(0x02)
+#define HMFS_XATTR_SDP_ECE_CONFIG_FLAG	(0x02)
 #define F2FS_XATTR_SDP_SECE_ENABLE_FLAG	(0x04)
-#define F2FS_XATTR_SDP_SECE_CONFIG_FLAG	(0x08)
+#define HMFS_XATTR_SDP_SECE_CONFIG_FLAG	(0x08)
 
 #define F2FS_INODE_IS_SDP_ENCRYPTED(flag) (flag & 0x0f)
 
-#define F2FS_INODE_IS_CONFIG_SDP_ECE_ENCRYPTION(flag)	\
-	((flag) & (F2FS_XATTR_SDP_ECE_CONFIG_FLAG))
-#define F2FS_INODE_IS_CONFIG_SDP_SECE_ENCRYPTION(flag)	\
-	((flag) & (F2FS_XATTR_SDP_SECE_CONFIG_FLAG))
-#define F2FS_INODE_IS_CONFIG_SDP_ENCRYPTION(flag)	\
-	(((flag) & (F2FS_XATTR_SDP_SECE_CONFIG_FLAG))	\
-	 || ((flag) & (F2FS_XATTR_SDP_ECE_CONFIG_FLAG)))
+#define HMFS_INODE_IS_CONFIG_SDP_ECE_ENCRYPTION(flag)	\
+	((flag) & (HMFS_XATTR_SDP_ECE_CONFIG_FLAG))
+#define HMFS_INODE_IS_CONFIG_SDP_SECE_ENCRYPTION(flag)	\
+	((flag) & (HMFS_XATTR_SDP_SECE_CONFIG_FLAG))
+#define HMFS_INODE_IS_CONFIG_SDP_ENCRYPTION(flag)	\
+	(((flag) & (HMFS_XATTR_SDP_SECE_CONFIG_FLAG))	\
+	 || ((flag) & (HMFS_XATTR_SDP_ECE_CONFIG_FLAG)))
 #define F2FS_INODE_IS_ENABLED_SDP_ECE_ENCRYPTION(flag)	\
 	((flag) & (F2FS_XATTR_SDP_ECE_ENABLE_FLAG))
 #define F2FS_INODE_IS_ENABLED_SDP_SECE_ENCRYPTION(flag)	\
@@ -50,7 +48,7 @@
 #define FSCRYPT_CE_CLASS			(1)
 #define FSCRYPT_SDP_ECE_CLASS		(2)
 #define FSCRYPT_SDP_SECE_CLASS		(3)
-#define FSCRYPT_DPS_CLASS	(4)
+#define FSCRYPT_DPS_CLASS		4
 
 #define FS_SDP_ECC_PUB_KEY_SIZE			(64)
 #define FS_SDP_ECC_PRIV_KEY_SIZE		(32)
@@ -65,6 +63,7 @@
 #endif
 
 #define FS_KEY_INDEX_OFFSET				(63)
+#define INLINE_CRYPTO_V2				2
 
 struct fscrypt_sdp_key {
 	u32 version;
@@ -92,24 +91,24 @@ struct f2fs_sdp_fscrypt_context {
 /*
  * policy.c internal functions
  */
-int f2fs_inode_get_sdp_encrypt_flags(struct inode *inode, void *fs_data,
+int hmfs_inode_get_sdp_encrypt_flags(struct inode *inode, void *fs_data,
 									 u32 *flag);
-int f2fs_inode_set_sdp_encryption_flags(struct inode *inode, void *fs_data,
+int hmfs_inode_set_sdp_encryption_flags(struct inode *inode, void *fs_data,
 										u32 sdp_enc_flag);
-int f2fs_inode_check_sdp_keyring(u8 *descriptor, int enforce);
+int hmfs_inode_check_sdp_keyring(u8 *descriptor, int enforce,
+					unsigned char ver);
 
 /*
  * keyinfo.c internal functions
  */
-int f2fs_change_to_sdp_crypto(struct inode *inode, void *fs_data);
-int f2fs_do_get_keyindex(u8 *descriptor, int *keyindex);
+int hmfs_change_to_sdp_crypto(struct inode *inode, void *fs_data);
 
 /*
  * ecdh.c internal functions
  */
 
 /**
- * get_file_pubkey_shared_secret() - Use ECDH to generate file public key
+ * hmfs_get_file_pubkey_shared_secret() - Use ECDH to generate file public key
  * and shared secret.
  *
  * @cuive_id:          Curve id, only ECC_CURVE_NIST_P256 now
@@ -125,7 +124,7 @@ int f2fs_do_get_keyindex(u8 *descriptor, int *keyindex);
  *         The contents of @file_pub_key and @shared_secret are
  *         undefined in case of error.
  */
-int get_file_pubkey_shared_secret(unsigned int curve_id, const u8 *dev_pub_key,
+int hmfs_get_file_pubkey_shared_secret(unsigned int curve_id, const u8 *dev_pub_key,
 								  unsigned int dev_pub_key_len,
 								  u8 *file_pub_key,
 								  unsigned int file_pub_key_len,
@@ -133,7 +132,7 @@ int get_file_pubkey_shared_secret(unsigned int curve_id, const u8 *dev_pub_key,
 								  unsigned int shared_secret_len);
 
 /**
- * get_shared_secret() - Use ECDH to generate shared secret.
+ * hmfs_get_shared_secret() - Use ECDH to generate shared secret.
  *
  * @cuive_id:          Curve id, only ECC_CURVE_NIST_P256 now
  * @dev_privkey:       Device private key
@@ -147,7 +146,7 @@ int get_file_pubkey_shared_secret(unsigned int curve_id, const u8 *dev_pub_key,
  * Return: 0 for success, error code in case of error.
  *         The content of @shared_secret is undefined in case of error.
  */
-int get_shared_secret(unsigned int curve_id, const u8 *dev_privkey,
+int hmfs_get_shared_secret(unsigned int curve_id, const u8 *dev_privkey,
 					  unsigned int dev_privkey_len, const u8 *file_pub_key,
 					  unsigned int file_pub_key_len, u8 *shared_secret,
 					  unsigned int shared_secret_len);

@@ -33,8 +33,15 @@
 #define DEF_GC_FAILED_PINNED_FILES	2048
 
 /* Search max. number of dirty segments to select a victim segment */
-#define DEF_MAX_VICTIM_SEARCH 4096 /* covers 8GB */
+#define DEF_MAX_VICTIM_SEARCH	4096 /* covers 8GB */
 
+#define SLC_ENABLE_INTERVAL	12
+
+#define GC_PERFORMANCE_SPACE_BIG	20
+#define GC_PERFORMANCE_SPACE_SMALL	12
+#define SMALL_CAPACITY_SEGS	80000
+
+#define GC_LEVEL_INTERVAL	4
 /* GC preferences */
 enum {
 	GC_LIFETIME = 0,
@@ -42,7 +49,6 @@ enum {
 	GC_PERF,
 	GC_FRAG
 };
-
 
 struct gc_inode_list {
 	struct list_head ilist;
@@ -91,7 +97,7 @@ static inline block_t limit_free_user_blocks(struct f2fs_sb_info *sbi)
 	return (long)(reclaimable_user_blocks * LIMIT_FREE_BLOCK) / 100;
 }
 
-static inline void increase_sleep_time(struct f2fs_gc_kthread *gc_th,
+static inline void increase_sleep_time(struct hmfs_gc_kthread *gc_th,
 							unsigned int *wait)
 {
 	unsigned int min_time = gc_th->min_sleep_time;
@@ -106,7 +112,7 @@ static inline void increase_sleep_time(struct f2fs_gc_kthread *gc_th,
 		*wait += min_time;
 }
 
-static inline void decrease_sleep_time(struct f2fs_gc_kthread *gc_th,
+static inline void decrease_sleep_time(struct hmfs_gc_kthread *gc_th,
 							unsigned int *wait)
 {
 	unsigned int min_time = gc_th->min_sleep_time;
@@ -133,4 +139,11 @@ static inline bool has_enough_invalid_blocks(struct f2fs_sb_info *sbi)
 			free_user_blocks(sbi) < limit_free_user_blocks(sbi))
 		return true;
 	return false;
+}
+
+static inline bool hmfs_disk_is_frag(struct f2fs_sb_info *sbi,
+						int free_block_count, int free_secs)
+{
+	return (free_block_count >
+			free_secs * sbi->segs_per_sec * sbi->blocks_per_seg * 4) ? true : false;
 }
